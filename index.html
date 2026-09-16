@@ -585,9 +585,10 @@
             <label for="defeito">O que está acontecendo?</label>
             <textarea id="defeito" placeholder="Descreva o defeito: quando começou, se liga, se faz algum barulho ou erro na tela..." required></textarea>
           </div>
-          <button type="submit" class="btn btn-primary" style="justify-self:start;">Preparar pedido por e-mail</button>
-          <p class="submit-note">Ao continuar, seu aplicativo de e-mail será aberto com o pedido preenchido para assistenciadodis@gmail.com. Confirme o envio no aplicativo. Se ele não abrir, <a href="https://wa.me/5511986412189" target="_blank" rel="noopener noreferrer">fale conosco pelo WhatsApp</a>.</p>
-          <p id="formMsg" role="status">Confira o pedido no seu aplicativo de e-mail e clique em enviar. O envio ainda não foi confirmado.</p>
+          <input type="text" id="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="display:none;">
+          <button type="submit" class="btn btn-primary" style="justify-self:start;">Enviar pedido de orçamento</button>
+          <p class="submit-note">Envie seu pedido por aqui. Retornaremos pelo WhatsApp informado. Se preferir, <a href="https://wa.me/5511986412189" target="_blank" rel="noopener noreferrer">fale conosco pelo WhatsApp</a>.</p>
+          <p id="formMsg" role="status" aria-live="polite"></p>
         </form>
 
         <div class="info-block">
@@ -642,24 +643,51 @@
   });
   window.matchMedia('(max-width:1100px)').addEventListener('change', () => setMenuOpen(false));
 
-  document.getElementById('quoteForm').addEventListener('submit', function(e){
+  document.getElementById('quoteForm').addEventListener('submit', async function(e){
     e.preventDefault();
+    const button = this.querySelector('button[type="submit"]');
+    if(button.disabled || !this.reportValidity()) return;
     const value = id => document.getElementById(id).value.trim();
-    const body = [
-      'Olá, gostaria de solicitar um orçamento.',
-      '',
-      'Nome: ' + value('nome'),
-      'WhatsApp: ' + value('tel'),
-      'Aparelho: ' + value('aparelho'),
-      'Urgência: ' + value('urgencia'),
-      '',
-      'Defeito relatado:',
-      value('defeito')
-    ].join('\r\n');
-    const subject = 'Pedido de orçamento — ' + value('aparelho');
-    window.location.href = 'mailto:assistenciadodis@gmail.com?subject='
-      + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
-    document.getElementById('formMsg').style.display = 'block';
+    if(value('website')) return;
+    const message = document.getElementById('formMsg');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    button.disabled = true;
+    button.textContent = 'Enviando…';
+    this.setAttribute('aria-busy', 'true');
+    message.style.display = 'block';
+    message.textContent = 'Enviando seu pedido…';
+    try {
+      const response = await fetch('https://formsubmit.co/ajax/assistenciadodis@gmail.com', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        signal: controller.signal,
+        body: JSON.stringify({
+          Nome: value('nome'),
+          WhatsApp: value('tel'),
+          Aparelho: value('aparelho'),
+          Urgencia: value('urgencia'),
+          Defeito: value('defeito'),
+          _subject: 'Pedido de orçamento — ' + value('aparelho'),
+          _template: 'table',
+          _url: window.location.href,
+          _honey: value('website')
+        })
+      });
+      const result = await response.json();
+      if(!response.ok || (result.success !== true && result.success !== 'true')) {
+        throw new Error('Envio não confirmado');
+      }
+      message.textContent = 'Pedido enviado! Retornaremos pelo WhatsApp informado.';
+      this.reset();
+    } catch(error) {
+      message.textContent = 'Não foi possível confirmar o envio. Seus dados foram mantidos. Tente novamente ou use o WhatsApp abaixo do botão.';
+    } finally {
+      clearTimeout(timeout);
+      button.disabled = false;
+      button.textContent = 'Enviar pedido de orçamento';
+      this.removeAttribute('aria-busy');
+    }
   });
 </script>
 
