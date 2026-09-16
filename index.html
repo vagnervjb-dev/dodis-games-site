@@ -674,14 +674,35 @@
           _honey: value('website')
         })
       });
-      const result = await response.json();
-      if(!response.ok || (result.success !== true && result.success !== 'true')) {
-        throw new Error('Envio não confirmado');
+      const result = await response.json().catch(() => null);
+      if(!response.ok) {
+        throw new Error('HTTP_' + response.status);
+      }
+      if(!result) throw new Error('INVALID_RESPONSE');
+      if(result.success !== true && result.success !== 'true') {
+        const reason = String(result.message || '').toLowerCase();
+        if(/activat|confirm.*email|verify.*email/.test(reason)) throw new Error('ACTIVATION');
+        if(/captcha|robot|spam/.test(reason)) throw new Error('VERIFICATION');
+        throw new Error('REJECTED');
       }
       message.textContent = 'Pedido enviado! Retornaremos pelo WhatsApp informado.';
       this.reset();
     } catch(error) {
-      message.textContent = 'Não foi possível confirmar o envio. Seus dados foram mantidos. Tente novamente ou use o WhatsApp abaixo do botão.';
+      let explanation = 'O serviço não aceitou o pedido. Referência: ENV-RECUSA.';
+      if(error.name === 'AbortError') {
+        explanation = 'O serviço demorou para responder e não conseguimos confirmar o envio. Referência: ENV-TEMPO.';
+      } else if(error instanceof TypeError) {
+        explanation = 'Não conseguimos conectar ao serviço de envio. Referência: ENV-CONEXAO.';
+      } else if(error.message.startsWith('HTTP_')) {
+        explanation = 'O serviço de envio retornou um erro. Referência: ENV-' + error.message.slice(5) + '.';
+      } else if(error.message === 'INVALID_RESPONSE') {
+        explanation = 'O serviço retornou uma resposta inesperada. Referência: ENV-RESPOSTA.';
+      } else if(error.message === 'ACTIVATION') {
+        explanation = 'O recebimento de pedidos deste formulário ainda não foi liberado. Referência: ENV-ATIVACAO.';
+      } else if(error.message === 'VERIFICATION') {
+        explanation = 'O serviço solicitou uma verificação adicional. Referência: ENV-VERIFICACAO.';
+      }
+      message.textContent = explanation + ' Seus dados foram mantidos. Você também pode falar conosco pelo link do WhatsApp acima.';
     } finally {
       clearTimeout(timeout);
       button.disabled = false;
